@@ -11,11 +11,6 @@ function formatDuration(seconds) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-function formatSize(bytes) {
-  const mb = Number(bytes || 0) / (1024 * 1024);
-  return `${mb.toFixed(1)} MB`;
-}
-
 export default function App() {
   const [media, setMedia] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
@@ -23,30 +18,15 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState('stream');
   const [error, setError] = useState('');
-  const [health, setHealth] = useState(null);
-
-  async function fetchHealth() {
-    try {
-      const res = await fetch(`${API}/health`);
-      if (!res.ok) return;
-      const data = await res.json();
-      setHealth(data);
-    } catch {
-      setHealth(null);
-    }
-  }
 
   async function fetchLibrary(query = '') {
     const qs = query ? `?q=${encodeURIComponent(query)}` : '';
     const res = await fetch(`${API}/library${qs}`);
     const data = await res.json();
-    const list = data.media || [];
-
-    setMedia(list);
-    setSelectedId((prev) => {
-      if (prev && list.some((item) => item.id === prev)) return prev;
-      return list[0]?.id || null;
-    });
+    setMedia(data.media || []);
+    if (!selectedId && data.media?.length) {
+      setSelectedId(data.media[0].id);
+    }
   }
 
   async function scanLibrary() {
@@ -54,12 +34,11 @@ export default function App() {
     setError('');
     try {
       const response = await fetch(`${API}/library/scan`, { method: 'POST' });
-      const body = await response.json();
       if (!response.ok) {
+        const body = await response.json();
         throw new Error(body.error || 'Scan failed');
       }
       await fetchLibrary(search);
-      await fetchHealth();
     } catch (scanError) {
       setError(scanError.message);
     } finally {
@@ -71,10 +50,6 @@ export default function App() {
     fetchLibrary(search);
   }, [search]);
 
-  useEffect(() => {
-    fetchHealth();
-  }, []);
-
   const selected = useMemo(
     () => media.find((item) => item.id === selectedId) || null,
     [media, selectedId]
@@ -85,89 +60,66 @@ export default function App() {
     : '';
 
   return (
-    <main className="shell">
-      <header className="hero">
-        <div>
-          <p className="eyebrow">Local Infrastructure Streaming</p>
-          <h1>Nova Media Hub</h1>
-          <p className="subtitle">A fast, private, self-hosted Plex alternative built with Node.js + React + FFmpeg.</p>
+    <main className="layout">
+      <aside className="sidebar">
+        <div className="toolbar">
+          <h1>Media Library</h1>
+          <button onClick={scanLibrary} disabled={loading}>{loading ? 'Scanning...' : 'Scan'}</button>
         </div>
-        <button className="cta" onClick={scanLibrary} disabled={loading}>{loading ? 'Scanning…' : 'Scan Library'}</button>
-      </header>
 
-      <section className="status-grid">
-        <article className="status-card">
-          <span>Indexed media</span>
-          <strong>{media.length}</strong>
-        </article>
-        <article className="status-card">
-          <span>Media root status</span>
-          <strong>{health?.mediaRootStatus || 'unknown'}</strong>
-        </article>
-        <article className="status-card">
-          <span>Server uptime</span>
-          <strong>{health ? `${health.uptimeSec}s` : 'n/a'}</strong>
-        </article>
-      </section>
+        <input
+          className="search"
+          placeholder="Search titles or file path..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
 
-      <section className="layout">
-        <aside className="sidebar glass">
-          <input
-            className="search"
-            placeholder="Search titles or file path..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+        {error ? <p className="error">{error}</p> : null}
 
-          {error ? <p className="error">{error}</p> : null}
+        <ul>
+          {media.map((item) => (
+            <li key={item.id}>
+              <button
+                className={item.id === selectedId ? 'item active' : 'item'}
+                onClick={() => setSelectedId(item.id)}
+              >
+                <strong>{item.title}</strong>
+                <small>{formatDuration(item.durationSec)} • {item.codec || 'unknown codec'}</small>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </aside>
 
-          <ul>
-            {media.map((item) => (
-              <li key={item.id}>
-                <button
-                  className={item.id === selectedId ? 'item active' : 'item'}
-                  onClick={() => setSelectedId(item.id)}
-                >
-                  <strong>{item.title}</strong>
-                  <small>{formatDuration(item.durationSec)} • {item.codec || 'codec unknown'}</small>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </aside>
+      <section className="player-pane">
+        {selected ? (
+          <>
+            <h2>{selected.title}</h2>
+            <p>{selected.relativePath}</p>
+            <p className="meta">
+              {selected.width && selected.height ? `${selected.width}×${selected.height}` : 'Unknown resolution'}
+              {' · '}
+              {formatDuration(selected.durationSec)}
+              {' · '}
+              {(selected.size / (1024 * 1024)).toFixed(1)} MB
+            </p>
 
-        <section className="player-pane glass">
-          {selected ? (
-            <>
-              <div className="player-header">
-                <h2>{selected.title}</h2>
-                <div className="mode-toggle" role="group" aria-label="Playback mode">
-                  <button className={mode === 'stream' ? 'pill active' : 'pill'} onClick={() => setMode('stream')}>Direct</button>
-                  <button className={mode === 'transcode' ? 'pill active' : 'pill'} onClick={() => setMode('transcode')}>Transcode</button>
-                </div>
-              </div>
+            <div className="mode-toggle" role="group" aria-label="Playback mode">
+              <button className={mode === 'stream' ? 'pill active' : 'pill'} onClick={() => setMode('stream')}>Direct Stream</button>
+              <button className={mode === 'transcode' ? 'pill active' : 'pill'} onClick={() => setMode('transcode')}>Transcode</button>
+            </div>
 
-              <p className="meta">
-                {selected.width && selected.height ? `${selected.width}×${selected.height}` : 'Unknown resolution'}
-                {' · '}
-                {formatDuration(selected.durationSec)}
-                {' · '}
-                {formatSize(selected.size)}
-              </p>
-              <p className="path">{selected.relativePath}</p>
-
-              <video
-                key={`${selected.id}-${mode}`}
-                controls
-                preload="metadata"
-                src={videoSrc}
-                className="player"
-              />
-            </>
-          ) : (
-            <p className="empty">No media indexed yet. Click <strong>Scan Library</strong> to begin.</p>
-          )}
-        </section>
+            <video
+              key={`${selected.id}-${mode}`}
+              controls
+              preload="metadata"
+              src={videoSrc}
+              className="player"
+            />
+          </>
+        ) : (
+          <p>No media indexed yet. Click <strong>Scan</strong> after setting MEDIA_ROOT.</p>
+        )}
       </section>
     </main>
   );

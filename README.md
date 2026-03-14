@@ -1,11 +1,11 @@
 # Local Media Server (Plex Alternative)
 
-A local-first media streaming platform using **Node.js + React + FFmpeg** with a production-ready API baseline and modern UI.
+A local-first media streaming platform using **Node.js + React + FFmpeg**.
 
 ## Monorepo Layout
 
-- `server/` – Express API for media indexing, metadata extraction, streaming, and transcoding.
-- `client/` – React frontend for searching libraries and watching media.
+- `server/` – Express API for media indexing, metadata extraction, and streaming/transcoding.
+- `client/` – React frontend for browsing libraries and watching media.
 
 ## Quick Start
 
@@ -22,9 +22,11 @@ npm install --prefix client
 cp server/.env.example server/.env
 ```
 
-Set `MEDIA_ROOT` to your media directory.
+Edit `server/.env` and set `MEDIA_ROOT` to your media directory.
 
 ### 3) Start backend + frontend
+
+In two terminals:
 
 ```bash
 npm run dev --prefix server
@@ -34,43 +36,37 @@ npm run dev --prefix client
 - API: `http://localhost:4000`
 - App: `http://localhost:5173`
 
-## Production-grade backend features
+## Core Features
 
-- Deterministic media IDs (stable across rescans)
-- JSON catalog persistence (`server/media-db.json`)
-- CORS + JSON payload limit configuration
-- Security response headers (`nosniff`, `referrer-policy`, `corp`)
-- Structured JSON request/error logging
-- Graceful shutdown handling (`SIGINT`, `SIGTERM`)
-- Scan-concurrency protection (`409` when scan already running)
-- Path safety validation to ensure streamed/transcoded files stay inside `MEDIA_ROOT`
+- Library scan endpoint powered by `ffprobe`
+- Media catalog API with optional text query filtering
+- Byte-range direct streaming endpoint for local network playback
+- Optional on-the-fly transcoding endpoint using `ffmpeg`
+- React player UI with searchable media list
+- Stable media IDs (based on relative file path) so links survive rescans
 
-## Streaming features
+## API Overview
 
-- `POST /api/library/scan` – scan and index media with `ffprobe`
-- `GET /api/library` – full list
-- `GET /api/library?q=keyword` – filtered list
-- `GET /api/library/:id` – one media item
-- `GET /api/stream/:id` – direct stream with byte-range support
-- `GET /api/transcode/:id` – progressive MP4 transcode stream via `ffmpeg`
-- `GET /api/health` – readiness + media root status + scan state
+- `GET /api/health` – health + index stats + media root status
+- `POST /api/library/scan` – scans `MEDIA_ROOT` and refreshes index
+- `GET /api/library` – returns indexed media records
+- `GET /api/library?q=movie` – filtered list by title/path
+- `GET /api/library/:id` – metadata for a single media record
+- `GET /api/stream/:id` – direct stream (supports byte-range requests)
+- `GET /api/transcode/:id` – progressive MP4 transcoding stream
 
-## Environment Variables
+## Deployment Notes (Internal Infrastructure)
 
-- `HOST` (default `0.0.0.0`)
-- `PORT` (default `4000`)
-- `MEDIA_ROOT` (**required**)
-- `FFMPEG_BIN` (default `ffmpeg`)
-- `FFPROBE_BIN` (default `ffprobe`)
-- `CORS_ORIGIN` (default `*`)
-- `REQUEST_BODY_LIMIT` (default `64kb`)
+- Put backend behind an internal reverse proxy (Nginx/Caddy).
+- Mount shared media storage where the backend can read files.
+- Use systemd or container orchestration for process management.
+- Keep service private to VPN/LAN.
 
-## Validation
+## Basic Validation
 
 ```bash
 node --check server/src/index.js
 node --test server/src/media-utils.test.js
-npm run test --prefix server
 ```
 
-> In restricted CI/sandbox environments, these backend checks run without `npm install`.
+These checks do not require `npm install` and validate core range parsing and ID behavior.
